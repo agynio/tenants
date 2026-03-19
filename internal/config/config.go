@@ -23,7 +23,7 @@ func FromEnv() (Config, error) {
 	}
 	cfg.AuthorizationAddress = os.Getenv("AUTHORIZATION_ADDRESS")
 	if cfg.AuthorizationAddress == "" {
-		return Config{}, fmt.Errorf("AUTHORIZATION_ADDRESS must be set")
+		cfg.AuthorizationAddress = "authorization:50051"
 	}
 	return cfg, nil
 }
