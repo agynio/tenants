@@ -46,7 +46,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: agynio/bootstrap
-          path: bootstrap
+          path: ${{ runner.temp }}/bootstrap
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v4
@@ -71,16 +71,16 @@ jobs:
 
       - name: Provision cluster
         run: |
-          cd bootstrap
+          cd ${{ runner.temp }}/bootstrap
           ./apply.sh -y
 
       - name: Verify platform workloads and Argo CD health
         run: |
-          cd bootstrap
+          cd ${{ runner.temp }}/bootstrap
           ./.github/scripts/verify_platform_health.sh
 
       - name: Set kubeconfig
-        run: echo "KUBECONFIG=$GITHUB_WORKSPACE/bootstrap/stacks/k8s/.kube/agyn-local-kubeconfig.yaml" >> "$GITHUB_ENV"
+        run: echo "KUBECONFIG=${{ runner.temp }}/bootstrap/stacks/k8s/.kube/agyn-local-kubeconfig.yaml" >> "$GITHUB_ENV"
 
       - name: Run e2e tests
         run: devspace run test-e2e
