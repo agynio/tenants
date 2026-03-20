@@ -131,11 +131,10 @@ pipelines:
     run: |-
       create_deployments e2e-runner
       start_dev e2e-runner &
-      sleep 5
       exec_container \
         --label-selector "app.kubernetes.io/name=tenants-e2e" \
         -n ${TENANTS_NAMESPACE} \
-        -- bash -c 'cd /opt/app/data && buf generate buf.build/agynio/api --path agynio/api/tenants/v1 --path agynio/api/authorization/v1 && go test -v -count=1 -tags e2e ./test/e2e/'
+        -- bash -c 'cd /opt/app/data && for i in $(seq 1 30); do [ -f buf.gen.yaml ] && break; echo "Waiting for sync..."; sleep 2; done && buf generate buf.build/agynio/api --path agynio/api/tenants/v1 --path agynio/api/authorization/v1 && go test -v -count=1 -tags e2e ./test/e2e/'
       EXIT_CODE=$?
       stop_dev e2e-runner
       purge_deployments e2e-runner
