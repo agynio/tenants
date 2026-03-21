@@ -1,33 +1,33 @@
 version: v2beta1
 
 vars:
-  ORGANIZATIONS_NAMESPACE: platform
+  TENANTS_NAMESPACE: platform
   E2E_IMAGE: ghcr.io/agynio/devcontainer-go:1
 
 functions:
   disable_argocd_sync: |-
-    if kubectl get application organizations -n argocd >/dev/null 2>&1; then
-      echo "Disabling ArgoCD auto-sync for organizations..."
-      kubectl patch application organizations -n argocd \
+    if kubectl get application tenants -n argocd >/dev/null 2>&1; then
+      echo "Disabling ArgoCD auto-sync for tenants..."
+      kubectl patch application tenants -n argocd \
         --type merge \
         -p '{"spec":{"syncPolicy":{"automated":null}}}'
       echo "ArgoCD auto-sync disabled."
     else
-      echo "WARNING: ArgoCD Application 'organizations' not found in argocd namespace."
+      echo "WARNING: ArgoCD Application 'tenants' not found in argocd namespace."
     fi
   restore_argocd_sync: &restore_argocd_sync |-
-    if kubectl get application organizations -n argocd >/dev/null 2>&1; then
-      echo "Re-enabling ArgoCD auto-sync for organizations..."
-      kubectl patch application organizations -n argocd \
+    if kubectl get application tenants -n argocd >/dev/null 2>&1; then
+      echo "Re-enabling ArgoCD auto-sync for tenants..."
+      kubectl patch application tenants -n argocd \
         --type merge \
         -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
       echo "ArgoCD auto-sync restored."
     else
-      echo "WARNING: ArgoCD Application 'organizations' not found in argocd namespace."
+      echo "WARNING: ArgoCD Application 'tenants' not found in argocd namespace."
     fi
   patch_deployment: |-
-    echo "Patching organizations deployment for DevSpace..."
-    kubectl patch deployment organizations-organizations -n ${ORGANIZATIONS_NAMESPACE} --type strategic --patch "$(cat <<'EOF'
+    echo "Patching tenants deployment for DevSpace..."
+    kubectl patch deployment tenants-tenants -n ${TENANTS_NAMESPACE} --type strategic --patch "$(cat <<'EOF'
     spec:
       template:
         spec:
@@ -39,7 +39,7 @@ functions:
             - name: data
               emptyDir: {}
           containers:
-            - name: organizations
+            - name: tenants
               image: ghcr.io/agynio/devcontainer-go:1 # keep in sync with E2E_IMAGE
               workingDir: /opt/app/data
               command:
@@ -79,7 +79,7 @@ functions:
 
 deployments:
   e2e-runner:
-    namespace: ${ORGANIZATIONS_NAMESPACE}
+    namespace: ${TENANTS_NAMESPACE}
     helm:
       chart:
         name: component-chart
@@ -93,7 +93,7 @@ deployments:
           - image: ${E2E_IMAGE}
             env:
               - name: ORGANIZATIONS_ADDR
-                value: "organizations:50051"
+                value: "tenants:50051"
             volumeMounts:
               - containerPath: /opt/app/data
                 volume:
@@ -102,7 +102,7 @@ deployments:
           - name: e2e-data
             emptyDir: {}
         labels:
-          app.kubernetes.io/name: organizations-e2e
+          app.kubernetes.io/name: tenants-e2e
 
 commands:
   test-e2e: |-
@@ -118,24 +118,24 @@ pipelines:
       disable_argocd_sync
       patch_deployment
       if [ "$(get_flag "watch")" == "true" ]; then
-        start_dev --disable-pod-replace organizations
+        start_dev --disable-pod-replace tenants
       else
-        start_dev --disable-pod-replace organizations
-        echo "Waiting for organizations to be healthy on :50051..."
+        start_dev --disable-pod-replace tenants
+        echo "Waiting for tenants to be healthy on :50051..."
         healthy=false
         for i in $(seq 1 60); do
-          if exec_container --label-selector=app.kubernetes.io/name=organizations -n ${ORGANIZATIONS_NAMESPACE} -- bash -c 'nc -z localhost 50051 >/dev/null 2>&1 || (echo > /dev/tcp/localhost/50051) >/dev/null 2>&1'; then
+          if exec_container --label-selector=app.kubernetes.io/name=tenants -n ${TENANTS_NAMESPACE} -- bash -c 'nc -z localhost 50051 >/dev/null 2>&1 || (echo > /dev/tcp/localhost/50051) >/dev/null 2>&1'; then
             healthy=true
             break
           fi
           sleep 2
         done
         if [ "$healthy" != "true" ]; then
-          echo "ERROR: Organizations did not become healthy within 120s" >&2
+          echo "ERROR: Tenants did not become healthy within 120s" >&2
           exit 1
         fi
         echo "Dev environment ready. Stopping dev session."
-        stop_dev organizations
+        stop_dev tenants
       fi
 
   test-e2e:
@@ -147,8 +147,8 @@ pipelines:
       SYNC_READY=false
       for i in $(seq 1 60); do
         if exec_container \
-          --label-selector "app.kubernetes.io/name=organizations-e2e" \
-          -n ${ORGANIZATIONS_NAMESPACE} \
+          --label-selector "app.kubernetes.io/name=tenants-e2e" \
+          -n ${TENANTS_NAMESPACE} \
           -- test -f /opt/app/data/go.mod 2>/dev/null; then
           SYNC_READY=true
           break
@@ -165,8 +165,8 @@ pipelines:
 
       echo "Sync complete. Running e2e tests..."
       exec_container \
-        --label-selector "app.kubernetes.io/name=organizations-e2e" \
-        -n ${ORGANIZATIONS_NAMESPACE} \
+        --label-selector "app.kubernetes.io/name=tenants-e2e" \
+        -n ${TENANTS_NAMESPACE} \
         -- bash -c '
           set -eu
           cd /opt/app/data
@@ -181,21 +181,21 @@ pipelines:
 hooks:
   - name: restore-argocd-auto-sync
     events:
-      - after:dev:organizations
+      - after:dev:tenants
     command: bash
     args:
       - -c
       - *restore_argocd_sync
 
 dev:
-  organizations:
-    namespace: ${ORGANIZATIONS_NAMESPACE}
+  tenants:
+    namespace: ${TENANTS_NAMESPACE}
     labelSelector:
-      app.kubernetes.io/name: organizations
-      app.kubernetes.io/instance: organizations
+      app.kubernetes.io/name: tenants
+      app.kubernetes.io/instance: tenants
     containers:
-      organizations:
-        container: organizations
+      tenants:
+        container: tenants
         sync:
           - path: ./:/opt/app/data
             excludePaths:
@@ -220,9 +220,9 @@ dev:
       - port: "50051"
 
   e2e-runner:
-    namespace: ${ORGANIZATIONS_NAMESPACE}
+    namespace: ${TENANTS_NAMESPACE}
     labelSelector:
-      app.kubernetes.io/name: organizations-e2e
+      app.kubernetes.io/name: tenants-e2e
     command: ["sleep", "infinity"]
     workingDir: /opt/app/data
     sync:
