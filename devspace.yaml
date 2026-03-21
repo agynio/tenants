@@ -140,8 +140,29 @@ pipelines:
 
   test-e2e:
     run: |-
+      disable_argocd_sync
+      patch_deployment
+      start_dev --disable-pod-replace tenants &
       create_deployments e2e-runner
       start_dev e2e-runner &
+
+      echo "Waiting for tenants to be healthy on :50051..."
+      healthy=false
+      for i in $(seq 1 60); do
+        if exec_container --label-selector=app.kubernetes.io/name=tenants -n ${TENANTS_NAMESPACE} -- bash -c 'nc -z localhost 50051 >/dev/null 2>&1 || (echo > /dev/tcp/localhost/50051) >/dev/null 2>&1'; then
+          healthy=true
+          break
+        fi
+        sleep 2
+      done
+
+      if [ "$healthy" != "true" ]; then
+        echo "ERROR: Tenants did not become healthy within 120s" >&2
+        stop_dev tenants || true
+        stop_dev e2e-runner || true
+        purge_deployments e2e-runner || true
+        exit 1
+      fi
 
       echo "Waiting for sync to complete..."
       SYNC_READY=false
@@ -158,6 +179,7 @@ pipelines:
 
       if [ "$SYNC_READY" != "true" ]; then
         echo "ERROR: sync did not complete within 120s" >&2
+        stop_dev tenants || true
         stop_dev e2e-runner || true
         purge_deployments e2e-runner || true
         exit 1
@@ -174,6 +196,7 @@ pipelines:
           go test -v -count=1 -tags e2e ./test/e2e/
         '
       EXIT_CODE=$?
+      stop_dev tenants
       stop_dev e2e-runner
       purge_deployments e2e-runner
       exit $EXIT_CODE
