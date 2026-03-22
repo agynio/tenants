@@ -11,7 +11,7 @@ permissions:
 
 env:
   IMAGE_NAME: ghcr.io/agynio/organizations
-  CHART_DIR: charts/tenants
+  CHART_DIR: charts/organizations
   CHART_REGISTRY: oci://ghcr.io/agynio/charts
 
 jobs:

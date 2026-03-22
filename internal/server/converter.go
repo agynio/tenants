@@ -1,8 +1,8 @@
 package server
 
 import (
-	organizationsv1 "github.com/agynio/tenants/.gen/go/agynio/api/organizations/v1"
-	"github.com/agynio/tenants/internal/store"
+	organizationsv1 "github.com/agynio/organizations/.gen/go/agynio/api/organizations/v1"
+	"github.com/agynio/organizations/internal/store"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

@@ -1,12 +1,12 @@
 apiVersion: v2
-name: tenants
-description: Helm chart for deploying the TenantsService gRPC server.
+name: organizations
+description: Helm chart for deploying the OrganizationsService gRPC server.
 type: application
 version: 0.1.0
 appVersion: 0.1.0
-home: https://github.com/agynio/tenants
+home: https://github.com/agynio/organizations
 sources:
-  - https://github.com/agynio/tenants
+  - https://github.com/agynio/organizations
 dependencies:
   - name: service-base
     version: ">=0.1.4 <1.0.0"

@@ -5,7 +5,7 @@ package e2e
 
 import "os"
 
-var organizationsAddr = envOrDefault("ORGANIZATIONS_ADDR", "tenants:50051")
+var organizationsAddr = envOrDefault("ORGANIZATIONS_ADDR", "organizations:50051")
 
 func envOrDefault(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {

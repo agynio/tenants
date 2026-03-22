@@ -10,16 +10,16 @@ import (
 	"os/signal"
 	"syscall"
 
-	authorizationv1 "github.com/agynio/tenants/.gen/go/agynio/api/authorization/v1"
-	organizationsv1 "github.com/agynio/tenants/.gen/go/agynio/api/organizations/v1"
+	authorizationv1 "github.com/agynio/organizations/.gen/go/agynio/api/authorization/v1"
+	organizationsv1 "github.com/agynio/organizations/.gen/go/agynio/api/organizations/v1"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/agynio/tenants/internal/config"
-	"github.com/agynio/tenants/internal/db"
-	"github.com/agynio/tenants/internal/server"
-	"github.com/agynio/tenants/internal/store"
+	"github.com/agynio/organizations/internal/config"
+	"github.com/agynio/organizations/internal/db"
+	"github.com/agynio/organizations/internal/server"
+	"github.com/agynio/organizations/internal/store"
 )
 
 func main() {

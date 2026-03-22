@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	organizationsv1 "github.com/agynio/tenants/.gen/go/agynio/api/organizations/v1"
+	organizationsv1 "github.com/agynio/organizations/.gen/go/agynio/api/organizations/v1"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"

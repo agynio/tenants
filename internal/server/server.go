@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	authorizationv1 "github.com/agynio/tenants/.gen/go/agynio/api/authorization/v1"
-	organizationsv1 "github.com/agynio/tenants/.gen/go/agynio/api/organizations/v1"
-	"github.com/agynio/tenants/internal/store"
+	authorizationv1 "github.com/agynio/organizations/.gen/go/agynio/api/authorization/v1"
+	organizationsv1 "github.com/agynio/organizations/.gen/go/agynio/api/organizations/v1"
+	"github.com/agynio/organizations/internal/store"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

@@ -6,7 +6,7 @@ import (
 	"io/fs"
 	"sort"
 
-	"github.com/agynio/tenants/migrations"
+	"github.com/agynio/organizations/migrations"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

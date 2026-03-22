@@ -1,4 +1,4 @@
-module github.com/agynio/tenants
+module github.com/agynio/organizations
 
 go 1.25.7
 
