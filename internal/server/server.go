@@ -11,6 +11,7 @@ import (
 	"github.com/agynio/organizations/internal/store"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -26,10 +27,43 @@ func New(store *store.Store, authorizationClient authorizationv1.AuthorizationSe
 	return &Server{store: store, authorizationClient: authorizationClient}
 }
 
+func identityIDFromContext(ctx context.Context) (string, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return "", fmt.Errorf("no metadata in context")
+	}
+	values := md.Get("x-identity-id")
+	if len(values) == 0 || values[0] == "" {
+		return "", fmt.Errorf("x-identity-id not found in metadata")
+	}
+	if _, err := uuid.Parse(values[0]); err != nil {
+		return "", fmt.Errorf("invalid identity id: %v", err)
+	}
+	return values[0], nil
+}
+
 func (s *Server) CreateOrganization(ctx context.Context, req *organizationsv1.CreateOrganizationRequest) (*organizationsv1.CreateOrganizationResponse, error) {
+	identityID, err := identityIDFromContext(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unauthenticated, "identity not available: %v", err)
+	}
+
 	organization, err := s.store.CreateOrganization(ctx, store.OrganizationInput{Name: req.GetName()})
 	if err != nil {
 		return nil, toStatusError(err)
+	}
+
+	_, err = s.authorizationClient.Write(ctx, &authorizationv1.WriteRequest{
+		Writes: []*authorizationv1.TupleKey{
+			{
+				User:     fmt.Sprintf("identity:%s", identityID),
+				Relation: "owner",
+				Object:   fmt.Sprintf("%s%s", organizationObjectPrefix, organization.ID.String()),
+			},
+		},
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to write ownership tuple: %v", err)
 	}
 	return &organizationsv1.CreateOrganizationResponse{Organization: toProtoOrganization(organization)}, nil
 }
