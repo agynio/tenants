@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
@@ -33,11 +34,14 @@ func TestOrganizationsServiceE2E(t *testing.T) {
 	client := organizationsv1.NewOrganizationsServiceClient(conn)
 
 	testID := uuid.NewString()
-	organizationResp1, err := client.CreateOrganization(ctx, &organizationsv1.CreateOrganizationRequest{Name: "Organization Alpha " + testID})
+	identityID := uuid.NewString()
+	identityCtx := identityContext(ctx, identityID)
+
+	organizationResp1, err := client.CreateOrganization(identityCtx, &organizationsv1.CreateOrganizationRequest{Name: "Organization Alpha " + testID})
 	require.NoError(t, err)
 	organizationID1 := organizationResp1.Organization.Id
 
-	organizationResp2, err := client.CreateOrganization(ctx, &organizationsv1.CreateOrganizationRequest{Name: "Organization Beta " + testID})
+	organizationResp2, err := client.CreateOrganization(identityCtx, &organizationsv1.CreateOrganizationRequest{Name: "Organization Beta " + testID})
 	require.NoError(t, err)
 	organizationID2 := organizationResp2.Organization.Id
 
@@ -61,6 +65,11 @@ func TestOrganizationsServiceE2E(t *testing.T) {
 	require.True(t, hasID(organizations, organizationID1))
 	require.True(t, hasID(organizations, organizationID2))
 
+	accessibleResp, err := client.ListAccessibleOrganizations(ctx, &organizationsv1.ListAccessibleOrganizationsRequest{IdentityId: identityID})
+	require.NoError(t, err)
+	require.True(t, hasID(accessibleResp.Organizations, organizationID1))
+	require.True(t, hasID(accessibleResp.Organizations, organizationID2))
+
 	_, err = client.UpdateOrganization(ctx, &organizationsv1.UpdateOrganizationRequest{Id: organizationID1})
 	requireStatusCode(t, err, codes.InvalidArgument)
 
@@ -71,6 +80,13 @@ func TestOrganizationsServiceE2E(t *testing.T) {
 	require.NoError(t, err)
 	_, err = client.DeleteOrganization(ctx, &organizationsv1.DeleteOrganizationRequest{Id: organizationID1})
 	require.NoError(t, err)
+
+	_, err = client.CreateOrganization(ctx, &organizationsv1.CreateOrganizationRequest{Name: "Organization Missing Metadata " + testID})
+	requireStatusCode(t, err, codes.Unauthenticated)
+
+	invalidIdentityCtx := identityContext(ctx, "not-a-uuid")
+	_, err = client.CreateOrganization(invalidIdentityCtx, &organizationsv1.CreateOrganizationRequest{Name: "Organization Invalid Metadata " + testID})
+	requireStatusCode(t, err, codes.Unauthenticated)
 }
 
 func listPaged[T any](t *testing.T, resource string, fetch func(pageToken string) ([]T, string, error)) []T {
@@ -98,6 +114,10 @@ func listOrganizations(ctx context.Context, t *testing.T, client organizationsv1
 		}
 		return resp.Organizations, resp.NextPageToken, nil
 	})
+}
+
+func identityContext(ctx context.Context, identityID string) context.Context {
+	return metadata.NewOutgoingContext(ctx, metadata.Pairs("x-identity-id", identityID))
 }
 
 func hasID(items []*organizationsv1.Organization, id string) bool {

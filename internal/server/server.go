@@ -15,7 +15,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const organizationObjectPrefix = "organization:"
+const (
+	organizationObjectPrefix = "organization:"
+	identityObjectPrefix     = "identity:"
+)
 
 type Server struct {
 	organizationsv1.UnimplementedOrganizationsServiceServer
@@ -27,19 +30,16 @@ func New(store *store.Store, authorizationClient authorizationv1.AuthorizationSe
 	return &Server{store: store, authorizationClient: authorizationClient}
 }
 
-func identityIDFromContext(ctx context.Context) (string, error) {
+func identityIDFromContext(ctx context.Context) (uuid.UUID, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return "", fmt.Errorf("no metadata in context")
+		return uuid.Nil, fmt.Errorf("no metadata in context")
 	}
 	values := md.Get("x-identity-id")
 	if len(values) == 0 || values[0] == "" {
-		return "", fmt.Errorf("x-identity-id not found in metadata")
+		return uuid.Nil, fmt.Errorf("x-identity-id not found in metadata")
 	}
-	if _, err := uuid.Parse(values[0]); err != nil {
-		return "", fmt.Errorf("invalid identity id: %v", err)
-	}
-	return values[0], nil
+	return uuid.Parse(values[0])
 }
 
 func (s *Server) CreateOrganization(ctx context.Context, req *organizationsv1.CreateOrganizationRequest) (*organizationsv1.CreateOrganizationResponse, error) {
@@ -56,13 +56,14 @@ func (s *Server) CreateOrganization(ctx context.Context, req *organizationsv1.Cr
 	_, err = s.authorizationClient.Write(ctx, &authorizationv1.WriteRequest{
 		Writes: []*authorizationv1.TupleKey{
 			{
-				User:     fmt.Sprintf("identity:%s", identityID),
+				User:     fmt.Sprintf("%s%s", identityObjectPrefix, identityID.String()),
 				Relation: "owner",
 				Object:   fmt.Sprintf("%s%s", organizationObjectPrefix, organization.ID.String()),
 			},
 		},
 	})
 	if err != nil {
+		_ = s.store.DeleteOrganization(ctx, organization.ID)
 		return nil, status.Errorf(codes.Internal, "failed to write ownership tuple: %v", err)
 	}
 	return &organizationsv1.CreateOrganizationResponse{Organization: toProtoOrganization(organization)}, nil
@@ -135,7 +136,7 @@ func (s *Server) ListAccessibleOrganizations(ctx context.Context, req *organizat
 	authResponse, err := s.authorizationClient.ListObjects(ctx, &authorizationv1.ListObjectsRequest{
 		Type:     "organization",
 		Relation: "member",
-		User:     fmt.Sprintf("identity:%s", identityID.String()),
+		User:     fmt.Sprintf("%s%s", identityObjectPrefix, identityID.String()),
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "authorization list objects: %v", err)
