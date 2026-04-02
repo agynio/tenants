@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	authorizationv1 "github.com/agynio/organizations/.gen/go/agynio/api/authorization/v1"
+	identityv1 "github.com/agynio/organizations/.gen/go/agynio/api/identity/v1"
 	organizationsv1 "github.com/agynio/organizations/.gen/go/agynio/api/organizations/v1"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
@@ -57,8 +58,18 @@ func run() error {
 	}
 	defer authConn.Close()
 
+	identityConn, err := grpc.NewClient(cfg.IdentityAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("connect to identity: %w", err)
+	}
+	defer identityConn.Close()
+
 	grpcServer := grpc.NewServer()
-	serverInstance := server.New(store.New(pool), authorizationv1.NewAuthorizationServiceClient(authConn))
+	serverInstance := server.New(
+		store.New(pool),
+		authorizationv1.NewAuthorizationServiceClient(authConn),
+		identityv1.NewIdentityServiceClient(identityConn),
+	)
 	organizationsv1.RegisterOrganizationsServiceServer(grpcServer, serverInstance)
 
 	lis, err := net.Listen("tcp", cfg.GRPCAddress)

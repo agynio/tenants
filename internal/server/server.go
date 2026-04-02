@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	authorizationv1 "github.com/agynio/organizations/.gen/go/agynio/api/authorization/v1"
+	identityv1 "github.com/agynio/organizations/.gen/go/agynio/api/identity/v1"
 	organizationsv1 "github.com/agynio/organizations/.gen/go/agynio/api/organizations/v1"
 	"github.com/agynio/organizations/internal/store"
 	"github.com/google/uuid"
@@ -24,10 +25,15 @@ type Server struct {
 	organizationsv1.UnimplementedOrganizationsServiceServer
 	store               *store.Store
 	authorizationClient authorizationv1.AuthorizationServiceClient
+	identityClient      identityv1.IdentityServiceClient
 }
 
-func New(store *store.Store, authorizationClient authorizationv1.AuthorizationServiceClient) *Server {
-	return &Server{store: store, authorizationClient: authorizationClient}
+func New(
+	store *store.Store,
+	authorizationClient authorizationv1.AuthorizationServiceClient,
+	identityClient identityv1.IdentityServiceClient,
+) *Server {
+	return &Server{store: store, authorizationClient: authorizationClient, identityClient: identityClient}
 }
 
 func identityIDFromContext(ctx context.Context) (uuid.UUID, error) {
@@ -40,6 +46,46 @@ func identityIDFromContext(ctx context.Context) (uuid.UUID, error) {
 		return uuid.Nil, fmt.Errorf("x-identity-id not found in metadata")
 	}
 	return uuid.Parse(values[0])
+}
+
+func (s *Server) checkPermission(ctx context.Context, identityID uuid.UUID, relation string, organizationID uuid.UUID) (bool, error) {
+	response, err := s.authorizationClient.Check(ctx, &authorizationv1.CheckRequest{
+		TupleKey: &authorizationv1.TupleKey{
+			User:     fmt.Sprintf("%s%s", identityObjectPrefix, identityID.String()),
+			Relation: relation,
+			Object:   fmt.Sprintf("%s%s", organizationObjectPrefix, organizationID.String()),
+		},
+	})
+	if err != nil {
+		return false, err
+	}
+	return response.GetAllowed(), nil
+}
+
+func (s *Server) writeTuple(ctx context.Context, identityID uuid.UUID, relation string, organizationID uuid.UUID) error {
+	_, err := s.authorizationClient.Write(ctx, &authorizationv1.WriteRequest{
+		Writes: []*authorizationv1.TupleKey{
+			{
+				User:     fmt.Sprintf("%s%s", identityObjectPrefix, identityID.String()),
+				Relation: relation,
+				Object:   fmt.Sprintf("%s%s", organizationObjectPrefix, organizationID.String()),
+			},
+		},
+	})
+	return err
+}
+
+func (s *Server) deleteTuple(ctx context.Context, identityID uuid.UUID, relation string, organizationID uuid.UUID) error {
+	_, err := s.authorizationClient.Write(ctx, &authorizationv1.WriteRequest{
+		Deletes: []*authorizationv1.TupleKey{
+			{
+				User:     fmt.Sprintf("%s%s", identityObjectPrefix, identityID.String()),
+				Relation: relation,
+				Object:   fmt.Sprintf("%s%s", organizationObjectPrefix, organizationID.String()),
+			},
+		},
+	})
+	return err
 }
 
 func (s *Server) CreateOrganization(ctx context.Context, req *organizationsv1.CreateOrganizationRequest) (*organizationsv1.CreateOrganizationResponse, error) {

@@ -1,6 +1,11 @@
 package store
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+
+	"github.com/jackc/pgx/v5/pgconn"
+)
 
 type NotFoundError struct {
 	Resource string
@@ -36,4 +41,20 @@ func AlreadyExists(resource string) error {
 
 func ForeignKeyViolation(resource string) error {
 	return &ForeignKeyViolationError{Resource: resource}
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return pgErr.Code == "23505"
+}
+
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return pgErr.Code == "23503"
 }

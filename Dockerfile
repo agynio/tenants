@@ -24,7 +24,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY buf.gen.yaml ./
 RUN buf generate buf.build/agynio/api \
     --path agynio/api/organizations/v1 \
-    --path agynio/api/authorization/v1
+    --path agynio/api/authorization/v1 \
+    --path agynio/api/identity/v1
 
 COPY . .
 
