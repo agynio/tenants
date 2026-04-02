@@ -9,6 +9,7 @@ type Config struct {
 	GRPCAddress          string
 	DatabaseURL          string
 	AuthorizationAddress string
+	IdentityAddress      string
 }
 
 func FromEnv() (Config, error) {
@@ -24,6 +25,10 @@ func FromEnv() (Config, error) {
 	cfg.AuthorizationAddress = os.Getenv("AUTHORIZATION_ADDRESS")
 	if cfg.AuthorizationAddress == "" {
 		cfg.AuthorizationAddress = "authorization:50051"
+	}
+	cfg.IdentityAddress = os.Getenv("IDENTITY_ADDRESS")
+	if cfg.IdentityAddress == "" {
+		cfg.IdentityAddress = "identity:50051"
 	}
 	return cfg, nil
 }

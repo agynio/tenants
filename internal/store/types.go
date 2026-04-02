@@ -29,5 +29,49 @@ type PageCursor struct {
 
 type OrganizationListResult struct {
 	Organizations []Organization
-	NextCursor *PageCursor
+	NextCursor    *PageCursor
+}
+
+type MembershipRole string
+
+const (
+	MembershipRoleOwner  MembershipRole = "owner"
+	MembershipRoleMember MembershipRole = "member"
+)
+
+type MembershipStatus string
+
+const (
+	MembershipStatusPending MembershipStatus = "pending"
+	MembershipStatusActive  MembershipStatus = "active"
+)
+
+type Membership struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	IdentityID     uuid.UUID
+	Role           MembershipRole
+	Status         MembershipStatus
+	ExpiresAt      *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type MembershipInput struct {
+	OrganizationID uuid.UUID
+	IdentityID     uuid.UUID
+	Role           MembershipRole
+	Status         MembershipStatus
+	ExpiresAt      *time.Time
+}
+
+type MembershipFilter struct {
+	OrganizationID *uuid.UUID
+	IdentityID     *uuid.UUID
+	Status         *MembershipStatus
+}
+
+type MembershipListResult struct {
+	Memberships []Membership
+	NextCursor  *PageCursor
 }
