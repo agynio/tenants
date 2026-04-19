@@ -1,35 +1,47 @@
 version: v2beta1
 
-# NOTE: Bootstrap deploys OrganizationsService as "tenants" (fullnameOverride + ArgoCD app).
-# Keep DevSpace pointing at tenants until bootstrap renames it back.
+# NOTE: Bootstrap main may deploy OrganizationsService as "tenants"; prefer label
+# selectors so DevSpace works against either naming until bootstrap#378 merges.
 vars:
   ORGANIZATIONS_NAMESPACE: platform
   E2E_IMAGE: ghcr.io/agynio/devcontainer-go:1
 
 functions:
   disable_argocd_sync: |-
-    if kubectl get application tenants -n argocd >/dev/null 2>&1; then
-      echo "Disabling ArgoCD auto-sync for tenants..."
-      kubectl patch application tenants -n argocd \
+    if kubectl get application organizations -n argocd >/dev/null 2>&1; then
+      echo "Disabling ArgoCD auto-sync for organizations..."
+      kubectl patch application organizations -n argocd \
         --type merge \
         -p '{"spec":{"syncPolicy":{"automated":null}}}'
       echo "ArgoCD auto-sync disabled."
     else
-      echo "WARNING: ArgoCD Application 'tenants' not found in argocd namespace."
+      echo "WARNING: ArgoCD Application 'organizations' not found in argocd namespace."
     fi
   restore_argocd_sync: &restore_argocd_sync |-
-    if kubectl get application tenants -n argocd >/dev/null 2>&1; then
-      echo "Re-enabling ArgoCD auto-sync for tenants..."
-      kubectl patch application tenants -n argocd \
+    if kubectl get application organizations -n argocd >/dev/null 2>&1; then
+      echo "Re-enabling ArgoCD auto-sync for organizations..."
+      kubectl patch application organizations -n argocd \
         --type merge \
         -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
       echo "ArgoCD auto-sync restored."
     else
-      echo "WARNING: ArgoCD Application 'tenants' not found in argocd namespace."
+      echo "WARNING: ArgoCD Application 'organizations' not found in argocd namespace."
     fi
   patch_deployment: |-
-    echo "Patching tenants deployment for DevSpace..."
-    kubectl patch deployment tenants -n ${ORGANIZATIONS_NAMESPACE} --type strategic --patch "$(cat <<'EOF'
+    echo "Patching organizations deployment for DevSpace..."
+    deployment_name=$(kubectl get deployments -n ${ORGANIZATIONS_NAMESPACE} \
+      -l 'app.kubernetes.io/name=organizations' \
+      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    if [[ -z "${deployment_name}" ]]; then
+      deployment_name=$(kubectl get deployments -n ${ORGANIZATIONS_NAMESPACE} \
+        -l 'app.kubernetes.io/name=tenants' \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    fi
+    if [[ -z "${deployment_name}" ]]; then
+      echo "ERROR: organizations deployment not found in ${ORGANIZATIONS_NAMESPACE}" >&2
+      exit 1
+    fi
+    kubectl patch deployment "${deployment_name}" -n ${ORGANIZATIONS_NAMESPACE} --type strategic --patch "$(cat <<'EOF'
     spec:
       template:
         spec:
@@ -95,7 +107,7 @@ deployments:
           - image: ${E2E_IMAGE}
             env:
               - name: ORGANIZATIONS_ADDR
-                value: "tenants:50051"
+                value: "organizations:50051"
             volumeMounts:
               - containerPath: /opt/app/data
                 volume:
@@ -123,10 +135,10 @@ pipelines:
         start_dev --disable-pod-replace organizations
       else
         start_dev --disable-pod-replace organizations
-        echo "Waiting for tenants to be healthy on :50051..."
+        echo "Waiting for organizations to be healthy on :50051..."
         healthy=false
         for i in $(seq 1 60); do
-          if exec_container --label-selector=app.kubernetes.io/name=organizations,app.kubernetes.io/instance=tenants -n ${ORGANIZATIONS_NAMESPACE} -- bash -c 'nc -z localhost 50051 >/dev/null 2>&1 || (echo > /dev/tcp/localhost/50051) >/dev/null 2>&1'; then
+        if exec_container --label-selector=app.kubernetes.io/name=organizations -n ${ORGANIZATIONS_NAMESPACE} -- bash -c 'nc -z localhost 50051 >/dev/null 2>&1 || (echo > /dev/tcp/localhost/50051) >/dev/null 2>&1'; then
             healthy=true
             break
           fi
@@ -144,9 +156,22 @@ pipelines:
     run: |-
       disable_argocd_sync
 
+      deployment_name=$(kubectl get deployments -n ${ORGANIZATIONS_NAMESPACE} \
+        -l 'app.kubernetes.io/name=organizations' \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+      if [[ -z "${deployment_name}" ]]; then
+        deployment_name=$(kubectl get deployments -n ${ORGANIZATIONS_NAMESPACE} \
+          -l 'app.kubernetes.io/name=tenants' \
+          -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+      fi
+      if [[ -z "${deployment_name}" ]]; then
+        echo "ERROR: organizations deployment not found in ${ORGANIZATIONS_NAMESPACE}" >&2
+        exit 1
+      fi
+
       # Update the deployment to use the freshly-built image (built and loaded in CI)
-      kubectl set image deployment/tenants organizations=ghcr.io/agynio/organizations:e2e-test -n ${ORGANIZATIONS_NAMESPACE}
-      kubectl rollout status deployment/tenants -n ${ORGANIZATIONS_NAMESPACE} --timeout=120s
+      kubectl set image "deployment/${deployment_name}" organizations=ghcr.io/agynio/organizations:e2e-test -n ${ORGANIZATIONS_NAMESPACE}
+      kubectl rollout status "deployment/${deployment_name}" -n ${ORGANIZATIONS_NAMESPACE} --timeout=120s
 
       create_deployments e2e-runner
       start_dev e2e-runner &
@@ -200,7 +225,6 @@ dev:
     namespace: ${ORGANIZATIONS_NAMESPACE}
     labelSelector:
       app.kubernetes.io/name: organizations
-      app.kubernetes.io/instance: tenants
     containers:
       organizations:
         container: organizations
