@@ -19,6 +19,7 @@ import (
 const (
 	organizationObjectPrefix = "organization:"
 	identityObjectPrefix     = "identity:"
+	clusterObject            = "cluster:global"
 )
 
 type Server struct {
@@ -88,6 +89,32 @@ func (s *Server) deleteTuple(ctx context.Context, identityID uuid.UUID, relation
 	return err
 }
 
+func (s *Server) writeClusterTuple(ctx context.Context, relation string, organizationID uuid.UUID) error {
+	_, err := s.authorizationClient.Write(ctx, &authorizationv1.WriteRequest{
+		Writes: []*authorizationv1.TupleKey{
+			{
+				User:     clusterObject,
+				Relation: relation,
+				Object:   fmt.Sprintf("%s%s", organizationObjectPrefix, organizationID.String()),
+			},
+		},
+	})
+	return err
+}
+
+func (s *Server) deleteClusterTuple(ctx context.Context, relation string, organizationID uuid.UUID) error {
+	_, err := s.authorizationClient.Write(ctx, &authorizationv1.WriteRequest{
+		Deletes: []*authorizationv1.TupleKey{
+			{
+				User:     clusterObject,
+				Relation: relation,
+				Object:   fmt.Sprintf("%s%s", organizationObjectPrefix, organizationID.String()),
+			},
+		},
+	})
+	return err
+}
+
 func (s *Server) CreateOrganization(ctx context.Context, req *organizationsv1.CreateOrganizationRequest) (*organizationsv1.CreateOrganizationResponse, error) {
 	identityID, err := identityIDFromContext(ctx)
 	if err != nil {
@@ -99,7 +126,13 @@ func (s *Server) CreateOrganization(ctx context.Context, req *organizationsv1.Cr
 		return nil, toStatusError(err)
 	}
 
+	if err := s.writeClusterTuple(ctx, "cluster", organization.ID); err != nil {
+		_ = s.store.DeleteOrganization(ctx, organization.ID)
+		return nil, status.Errorf(codes.Internal, "failed to write cluster tuple: %v", err)
+	}
+
 	if err := s.writeTuple(ctx, identityID, "owner", organization.ID); err != nil {
+		_ = s.deleteClusterTuple(ctx, "cluster", organization.ID)
 		_ = s.store.DeleteOrganization(ctx, organization.ID)
 		return nil, status.Errorf(codes.Internal, "failed to write ownership tuple: %v", err)
 	}
@@ -112,6 +145,7 @@ func (s *Server) CreateOrganization(ctx context.Context, req *organizationsv1.Cr
 	})
 	if err != nil {
 		_ = s.deleteTuple(ctx, identityID, "owner", organization.ID)
+		_ = s.deleteClusterTuple(ctx, "cluster", organization.ID)
 		_ = s.store.DeleteOrganization(ctx, organization.ID)
 		return nil, toStatusError(err)
 	}
@@ -182,7 +216,7 @@ func (s *Server) ListAccessibleOrganizations(ctx context.Context, req *organizat
 		return nil, status.Errorf(codes.InvalidArgument, "identity_id: %v", err)
 	}
 
-	authResponse, err := s.authorizationClient.ListObjects(ctx, &authorizationv1.ListObjectsRequest{
+	memberResponse, err := s.authorizationClient.ListObjects(ctx, &authorizationv1.ListObjectsRequest{
 		Type:     "organization",
 		Relation: "member",
 		User:     fmt.Sprintf("%s%s", identityObjectPrefix, identityID.String()),
@@ -190,12 +224,28 @@ func (s *Server) ListAccessibleOrganizations(ctx context.Context, req *organizat
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "authorization list objects: %v", err)
 	}
-	if len(authResponse.Objects) == 0 {
+	adminResponse, err := s.authorizationClient.ListObjects(ctx, &authorizationv1.ListObjectsRequest{
+		Type:     "organization",
+		Relation: "can_add_member",
+		User:     fmt.Sprintf("%s%s", identityObjectPrefix, identityID.String()),
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "authorization list objects: %v", err)
+	}
+
+	objects := make(map[string]struct{}, len(memberResponse.Objects)+len(adminResponse.Objects))
+	for _, object := range memberResponse.Objects {
+		objects[object] = struct{}{}
+	}
+	for _, object := range adminResponse.Objects {
+		objects[object] = struct{}{}
+	}
+	if len(objects) == 0 {
 		return &organizationsv1.ListAccessibleOrganizationsResponse{Organizations: []*organizationsv1.Organization{}}, nil
 	}
 
-	organizationIDs := make([]uuid.UUID, 0, len(authResponse.Objects))
-	for _, object := range authResponse.Objects {
+	organizationIDs := make([]uuid.UUID, 0, len(objects))
+	for object := range objects {
 		organizationID, err := parseOrganizationObject(object)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "authorization object %q: %v", object, err)
