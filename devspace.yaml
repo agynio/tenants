@@ -1,7 +1,4 @@
 version: v2beta1
-
-# NOTE: Bootstrap main may deploy OrganizationsService as "tenants"; prefer label
-# selectors so DevSpace works against either naming until bootstrap#378 merges.
 vars:
   ORGANIZATIONS_NAMESPACE: platform
   E2E_IMAGE: ghcr.io/agynio/devcontainer-go:1
@@ -29,19 +26,7 @@ functions:
     fi
   patch_deployment: |-
     echo "Patching organizations deployment for DevSpace..."
-    deployment_name=$(kubectl get deployments -n ${ORGANIZATIONS_NAMESPACE} \
-      -l 'app.kubernetes.io/name=organizations' \
-      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-    if [[ -z "${deployment_name}" ]]; then
-      deployment_name=$(kubectl get deployments -n ${ORGANIZATIONS_NAMESPACE} \
-        -l 'app.kubernetes.io/name=tenants' \
-        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-    fi
-    if [[ -z "${deployment_name}" ]]; then
-      echo "ERROR: organizations deployment not found in ${ORGANIZATIONS_NAMESPACE}" >&2
-      exit 1
-    fi
-    kubectl patch deployment "${deployment_name}" -n ${ORGANIZATIONS_NAMESPACE} --type strategic --patch "$(cat <<'EOF'
+    kubectl patch deployment organizations -n ${ORGANIZATIONS_NAMESPACE} --type strategic --patch "$(cat <<'EOF'
     spec:
       template:
         spec:
@@ -156,22 +141,9 @@ pipelines:
     run: |-
       disable_argocd_sync
 
-      deployment_name=$(kubectl get deployments -n ${ORGANIZATIONS_NAMESPACE} \
-        -l 'app.kubernetes.io/name=organizations' \
-        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-      if [[ -z "${deployment_name}" ]]; then
-        deployment_name=$(kubectl get deployments -n ${ORGANIZATIONS_NAMESPACE} \
-          -l 'app.kubernetes.io/name=tenants' \
-          -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-      fi
-      if [[ -z "${deployment_name}" ]]; then
-        echo "ERROR: organizations deployment not found in ${ORGANIZATIONS_NAMESPACE}" >&2
-        exit 1
-      fi
-
       # Update the deployment to use the freshly-built image (built and loaded in CI)
-      kubectl set image "deployment/${deployment_name}" organizations=ghcr.io/agynio/organizations:e2e-test -n ${ORGANIZATIONS_NAMESPACE}
-      kubectl rollout status "deployment/${deployment_name}" -n ${ORGANIZATIONS_NAMESPACE} --timeout=120s
+      kubectl set image deployment/organizations organizations=ghcr.io/agynio/organizations:e2e-test -n ${ORGANIZATIONS_NAMESPACE}
+      kubectl rollout status deployment/organizations -n ${ORGANIZATIONS_NAMESPACE} --timeout=120s
 
       create_deployments e2e-runner
       start_dev e2e-runner &
