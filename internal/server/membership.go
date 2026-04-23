@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	authorizationv1 "github.com/agynio/organizations/.gen/go/agynio/api/authorization/v1"
@@ -78,6 +80,7 @@ func (s *Server) CreateMembership(ctx context.Context, req *organizationsv1.Crea
 			_ = s.store.DeleteMembership(ctx, membership.ID)
 			return nil, status.Errorf(codes.Internal, "failed to write membership tuple: %v", err)
 		}
+		s.seedDefaultNickname(ctx, membership.OrganizationID, membership.IdentityID)
 	}
 
 	return &organizationsv1.CreateMembershipResponse{Membership: toProtoMembership(membership)}, nil
@@ -114,6 +117,7 @@ func (s *Server) AcceptMembership(ctx context.Context, req *organizationsv1.Acce
 		_, _ = s.store.UpdateMembershipStatus(ctx, updated.ID, store.MembershipStatusPending)
 		return nil, status.Errorf(codes.Internal, "failed to write membership tuple: %v", err)
 	}
+	s.seedDefaultNickname(ctx, updated.OrganizationID, updated.IdentityID)
 
 	return &organizationsv1.AcceptMembershipResponse{Membership: toProtoMembership(updated)}, nil
 }
@@ -303,6 +307,48 @@ func (s *Server) ListMyMemberships(ctx context.Context, req *organizationsv1.Lis
 	return &organizationsv1.ListMyMembershipsResponse{Memberships: memberships, NextPageToken: nextToken}, nil
 }
 
+func (s *Server) SetMyOrgNickname(ctx context.Context, req *organizationsv1.SetMyOrgNicknameRequest) (*organizationsv1.SetMyOrgNicknameResponse, error) {
+	callerID, err := identityIDFromContext(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unauthenticated, "identity not available: %v", err)
+	}
+
+	organizationID, err := parseUUID(req.GetOrganizationId())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "organization_id: %v", err)
+	}
+	nickname := req.GetNickname()
+	if nickname == "" {
+		return nil, status.Error(codes.InvalidArgument, "nickname must be provided")
+	}
+
+	membership, err := s.store.GetMembershipByOrganizationIdentity(ctx, organizationID, callerID)
+	if err != nil {
+		var notFound *store.NotFoundError
+		if errors.As(err, &notFound) {
+			return nil, status.Error(codes.PermissionDenied, "active membership required")
+		}
+		return nil, toStatusError(err)
+	}
+	if membership.Status != store.MembershipStatusActive {
+		return nil, status.Error(codes.PermissionDenied, "active membership required")
+	}
+
+	_, err = s.identityClient.SetNickname(ctx, &identityv1.SetNicknameRequest{
+		OrganizationId: organizationID.String(),
+		IdentityId:     callerID.String(),
+		Nickname:       nickname,
+	})
+	if err != nil {
+		if statusErr, ok := status.FromError(err); ok {
+			return nil, status.Error(statusErr.Code(), statusErr.Message())
+		}
+		return nil, status.Errorf(codes.Internal, "set nickname: %v", err)
+	}
+
+	return &organizationsv1.SetMyOrgNicknameResponse{}, nil
+}
+
 func (s *Server) ensureIdentityExists(ctx context.Context, identityID uuid.UUID) error {
 	_, err := s.identityClient.GetIdentityType(ctx, &identityv1.GetIdentityTypeRequest{IdentityId: identityID.String()})
 	if err == nil {
@@ -313,4 +359,20 @@ func (s *Server) ensureIdentityExists(ctx context.Context, identityID uuid.UUID)
 		return status.Error(codes.FailedPrecondition, "identity not found")
 	}
 	return status.Errorf(codes.Internal, "identity lookup failed: %v", err)
+}
+
+func (s *Server) seedDefaultNickname(ctx context.Context, organizationID uuid.UUID, identityID uuid.UUID) {
+	nickname := defaultNickname(identityID)
+	if nickname == "" {
+		return
+	}
+	_, _ = s.identityClient.SetNickname(ctx, &identityv1.SetNicknameRequest{
+		OrganizationId: organizationID.String(),
+		IdentityId:     identityID.String(),
+		Nickname:       nickname,
+	})
+}
+
+func defaultNickname(identityID uuid.UUID) string {
+	return strings.ReplaceAll(identityID.String(), "-", "")
 }

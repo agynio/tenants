@@ -74,6 +74,22 @@ func (s *Store) GetMembership(ctx context.Context, id uuid.UUID) (Membership, er
 	return membership, nil
 }
 
+func (s *Store) GetMembershipByOrganizationIdentity(ctx context.Context, organizationID uuid.UUID, identityID uuid.UUID) (Membership, error) {
+	row := s.pool.QueryRow(ctx,
+		fmt.Sprintf(`SELECT %s FROM memberships WHERE organization_id = $1 AND identity_id = $2`, membershipColumns),
+		organizationID,
+		identityID,
+	)
+	membership, err := scanMembership(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Membership{}, NotFound("membership")
+		}
+		return Membership{}, err
+	}
+	return membership, nil
+}
+
 func (s *Store) UpdateMembershipStatus(ctx context.Context, id uuid.UUID, status MembershipStatus) (Membership, error) {
 	builder := updateBuilder{}
 	builder.add("status", status)

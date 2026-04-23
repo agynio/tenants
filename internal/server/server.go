@@ -149,6 +149,7 @@ func (s *Server) CreateOrganization(ctx context.Context, req *organizationsv1.Cr
 		_ = s.store.DeleteOrganization(ctx, organization.ID)
 		return nil, toStatusError(err)
 	}
+	s.seedDefaultNickname(ctx, organization.ID, identityID)
 	return &organizationsv1.CreateOrganizationResponse{Organization: toProtoOrganization(organization)}, nil
 }
 
