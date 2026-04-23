@@ -9,6 +9,7 @@ import (
 	authorizationv1 "github.com/agynio/organizations/.gen/go/agynio/api/authorization/v1"
 	identityv1 "github.com/agynio/organizations/.gen/go/agynio/api/identity/v1"
 	organizationsv1 "github.com/agynio/organizations/.gen/go/agynio/api/organizations/v1"
+	usersv1 "github.com/agynio/organizations/.gen/go/agynio/api/users/v1"
 	"github.com/agynio/organizations/internal/store"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
@@ -27,14 +28,21 @@ type Server struct {
 	store               *store.Store
 	authorizationClient authorizationv1.AuthorizationServiceClient
 	identityClient      identityv1.IdentityServiceClient
+	usersClient         usersv1.UsersServiceClient
 }
 
 func New(
 	store *store.Store,
 	authorizationClient authorizationv1.AuthorizationServiceClient,
 	identityClient identityv1.IdentityServiceClient,
+	usersClient usersv1.UsersServiceClient,
 ) *Server {
-	return &Server{store: store, authorizationClient: authorizationClient, identityClient: identityClient}
+	return &Server{
+		store:               store,
+		authorizationClient: authorizationClient,
+		identityClient:      identityClient,
+		usersClient:         usersClient,
+	}
 }
 
 func identityIDFromContext(ctx context.Context) (uuid.UUID, error) {

@@ -13,6 +13,7 @@ import (
 	authorizationv1 "github.com/agynio/organizations/.gen/go/agynio/api/authorization/v1"
 	identityv1 "github.com/agynio/organizations/.gen/go/agynio/api/identity/v1"
 	organizationsv1 "github.com/agynio/organizations/.gen/go/agynio/api/organizations/v1"
+	usersv1 "github.com/agynio/organizations/.gen/go/agynio/api/users/v1"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -64,11 +65,18 @@ func run() error {
 	}
 	defer identityConn.Close()
 
+	usersConn, err := grpc.NewClient(cfg.UsersAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("connect to users: %w", err)
+	}
+	defer usersConn.Close()
+
 	grpcServer := grpc.NewServer()
 	serverInstance := server.New(
 		store.New(pool),
 		authorizationv1.NewAuthorizationServiceClient(authConn),
 		identityv1.NewIdentityServiceClient(identityConn),
+		usersv1.NewUsersServiceClient(usersConn),
 	)
 	organizationsv1.RegisterOrganizationsServiceServer(grpcServer, serverInstance)
 

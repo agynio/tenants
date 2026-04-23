@@ -3,12 +3,12 @@ package server
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	authorizationv1 "github.com/agynio/organizations/.gen/go/agynio/api/authorization/v1"
 	identityv1 "github.com/agynio/organizations/.gen/go/agynio/api/identity/v1"
 	organizationsv1 "github.com/agynio/organizations/.gen/go/agynio/api/organizations/v1"
+	usersv1 "github.com/agynio/organizations/.gen/go/agynio/api/users/v1"
 	"github.com/agynio/organizations/internal/store"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
@@ -362,17 +362,38 @@ func (s *Server) ensureIdentityExists(ctx context.Context, identityID uuid.UUID)
 }
 
 func (s *Server) seedDefaultNickname(ctx context.Context, organizationID uuid.UUID, identityID uuid.UUID) {
-	nickname := defaultNickname(identityID)
-	if nickname == "" {
+	identityType, err := s.identityClient.GetIdentityType(ctx, &identityv1.GetIdentityTypeRequest{IdentityId: identityID.String()})
+	if err != nil {
 		return
 	}
-	_, _ = s.identityClient.SetNickname(ctx, &identityv1.SetNicknameRequest{
+	if identityType.GetIdentityType() != identityv1.IdentityType_IDENTITY_TYPE_USER {
+		return
+	}
+
+	username := s.fetchUsername(ctx, identityID)
+	if username == "" {
+		return
+	}
+	_, err = s.identityClient.SetNickname(ctx, &identityv1.SetNicknameRequest{
 		OrganizationId: organizationID.String(),
 		IdentityId:     identityID.String(),
-		Nickname:       nickname,
+		Nickname:       username,
 	})
+	if err != nil {
+		if statusErr, ok := status.FromError(err); ok && statusErr.Code() == codes.AlreadyExists {
+			return
+		}
+	}
 }
 
-func defaultNickname(identityID uuid.UUID) string {
-	return strings.ReplaceAll(identityID.String(), "-", "")
+func (s *Server) fetchUsername(ctx context.Context, identityID uuid.UUID) string {
+	response, err := s.usersClient.BatchGetUsers(ctx, &usersv1.BatchGetUsersRequest{IdentityIds: []string{identityID.String()}})
+	if err != nil {
+		return ""
+	}
+	users := response.GetUsers()
+	if len(users) == 0 {
+		return ""
+	}
+	return users[0].GetUsername()
 }

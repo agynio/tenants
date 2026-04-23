@@ -51,7 +51,7 @@ functions:
                     sleep 1; elapsed=$((elapsed + 1))
                     [ "$elapsed" -ge 120 ] && { echo "ERROR: sync timeout" >&2; exit 1; }
                   done
-                  buf generate buf.build/agynio/api --path agynio/api/organizations/v1 --path agynio/api/authorization/v1 --path agynio/api/identity/v1
+                  buf generate buf.build/agynio/api --path agynio/api/organizations/v1 --path agynio/api/authorization/v1 --path agynio/api/identity/v1 --path agynio/api/users/v1
                   exec go run ./cmd/organizations-service
               volumeMounts:
                 - name: data
@@ -175,7 +175,7 @@ pipelines:
         -- bash -c '
           set -eu
           cd /opt/app/data
-          buf generate buf.build/agynio/api --path agynio/api/organizations/v1 --path agynio/api/authorization/v1 --path agynio/api/identity/v1
+          buf generate buf.build/agynio/api --path agynio/api/organizations/v1 --path agynio/api/authorization/v1 --path agynio/api/identity/v1 --path agynio/api/users/v1
           go test -v -count=1 -tags e2e ./test/e2e/
         '
       EXIT_CODE=$?

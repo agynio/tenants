@@ -25,7 +25,8 @@ COPY buf.gen.yaml ./
 RUN buf generate buf.build/agynio/api \
     --path agynio/api/organizations/v1 \
     --path agynio/api/authorization/v1 \
-    --path agynio/api/identity/v1
+    --path agynio/api/identity/v1 \
+    --path agynio/api/users/v1
 
 COPY . .
 
