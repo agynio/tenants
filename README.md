@@ -32,7 +32,10 @@ devspace dev -w
 ### Run tests
 
 ```bash
-devspace run test:e2e
+GOTOOLCHAIN=local go test ./...
 ```
+
+E2E coverage now runs from the centralized go-core suite in
+[`agynio/e2e`](https://github.com/agynio/e2e) (service: `organizations`).
 
 See [E2E Testing](https://github.com/agynio/architecture/blob/main/architecture/operations/e2e-testing.md).

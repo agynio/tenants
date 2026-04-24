@@ -1,7 +1,6 @@
 version: v2beta1
 vars:
   ORGANIZATIONS_NAMESPACE: platform
-  E2E_IMAGE: ghcr.io/agynio/devcontainer-go:1
 
 functions:
   disable_argocd_sync: |-
@@ -39,7 +38,7 @@ functions:
               emptyDir: {}
           containers:
             - name: organizations
-              image: ghcr.io/agynio/devcontainer-go:1 # keep in sync with E2E_IMAGE
+              image: ghcr.io/agynio/devcontainer-go:1
               workingDir: /opt/app/data
               command:
                 - sh
@@ -76,37 +75,6 @@ functions:
     EOF
     )"
 
-deployments:
-  e2e-runner:
-    namespace: ${ORGANIZATIONS_NAMESPACE}
-    helm:
-      chart:
-        name: component-chart
-        repo: https://charts.devspace.sh
-      values:
-        securityContext:
-          runAsUser: 1000
-          runAsGroup: 1000
-          fsGroup: 1000
-        containers:
-          - image: ${E2E_IMAGE}
-            env:
-              - name: ORGANIZATIONS_ADDR
-                value: "organizations:50051"
-            volumeMounts:
-              - containerPath: /opt/app/data
-                volume:
-                  name: e2e-data
-        volumes:
-          - name: e2e-data
-            emptyDir: {}
-        labels:
-          app.kubernetes.io/name: organizations-e2e
-
-commands:
-  test-e2e: |-
-    devspace run-pipeline test-e2e $@
-
 pipelines:
   dev:
     flags:
@@ -136,52 +104,6 @@ pipelines:
         echo "Dev environment ready. Stopping dev session."
         stop_dev organizations
       fi
-
-  test-e2e:
-    run: |-
-      disable_argocd_sync
-
-      # Update the deployment to use the freshly-built image (built and loaded in CI)
-      kubectl set image deployment/organizations organizations=ghcr.io/agynio/organizations:e2e-test -n ${ORGANIZATIONS_NAMESPACE}
-      kubectl rollout status deployment/organizations -n ${ORGANIZATIONS_NAMESPACE} --timeout=120s
-
-      create_deployments e2e-runner
-      start_dev e2e-runner &
-
-      echo "Waiting for sync to complete..."
-      SYNC_READY=false
-      for i in $(seq 1 60); do
-        if exec_container \
-          --label-selector "app.kubernetes.io/name=organizations-e2e" \
-          -n ${ORGANIZATIONS_NAMESPACE} \
-          -- test -f /opt/app/data/go.mod 2>/dev/null; then
-          SYNC_READY=true
-          break
-        fi
-        sleep 2
-      done
-
-      if [ "$SYNC_READY" != "true" ]; then
-        echo "ERROR: sync did not complete within 120s" >&2
-        stop_dev e2e-runner || true
-        purge_deployments e2e-runner || true
-        exit 1
-      fi
-
-      echo "Sync complete. Running e2e tests..."
-      exec_container \
-        --label-selector "app.kubernetes.io/name=organizations-e2e" \
-        -n ${ORGANIZATIONS_NAMESPACE} \
-        -- bash -c '
-          set -eu
-          cd /opt/app/data
-          buf generate buf.build/agynio/api --path agynio/api/organizations/v1 --path agynio/api/authorization/v1 --path agynio/api/identity/v1 --path agynio/api/users/v1
-          go test -v -count=1 -tags e2e ./test/e2e/
-        '
-      EXIT_CODE=$?
-      stop_dev e2e-runner
-      purge_deployments e2e-runner
-      exit $EXIT_CODE
 
 hooks:
   - name: restore-argocd-auto-sync
@@ -222,18 +144,3 @@ dev:
           lastLines: 200
     ports:
       - port: "50051"
-
-  e2e-runner:
-    namespace: ${ORGANIZATIONS_NAMESPACE}
-    labelSelector:
-      app.kubernetes.io/name: organizations-e2e
-    command: ["sleep", "infinity"]
-    workingDir: /opt/app/data
-    sync:
-      - path: ./:/opt/app/data
-        excludePaths:
-          - .git/
-          - .devspace/
-          - /.gen/
-          - /tmp/
-          - /bootstrap/
