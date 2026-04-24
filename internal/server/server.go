@@ -63,26 +63,6 @@ func identityIDFromContext(ctx context.Context) (uuid.UUID, error) {
 	return uuid.Parse(values[0])
 }
 
-func identityIDFromContextIfPresent(ctx context.Context) (uuid.UUID, bool, error) {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return uuid.Nil, false, nil
-	}
-	values := md.Get("x-identity-id")
-	if len(values) == 0 {
-		return uuid.Nil, false, nil
-	}
-	value := strings.TrimSpace(values[0])
-	if value == "" {
-		return uuid.Nil, false, nil
-	}
-	identityID, err := uuid.Parse(value)
-	if err != nil {
-		return uuid.Nil, true, err
-	}
-	return identityID, true, nil
-}
-
 func (s *Server) checkPermission(ctx context.Context, identityID uuid.UUID, relation string, organizationID uuid.UUID) (bool, error) {
 	response, err := s.authorizationClient.Check(ctx, &authorizationv1.CheckRequest{
 		TupleKey: &authorizationv1.TupleKey{
@@ -249,18 +229,17 @@ func (s *Server) DeleteOrganization(ctx context.Context, req *organizationsv1.De
 }
 
 func (s *Server) ListOrganizations(ctx context.Context, req *organizationsv1.ListOrganizationsRequest) (*organizationsv1.ListOrganizationsResponse, error) {
-	identityID, hasIdentity, err := identityIDFromContextIfPresent(ctx)
+	identityID, err := identityIDFromContext(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Unauthenticated, "identity not available: %v", err)
 	}
-	if hasIdentity {
-		allowed, err := s.isClusterAdmin(ctx, identityID)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "authorization check: %v", err)
-		}
-		if !allowed {
-			return nil, status.Error(codes.PermissionDenied, "missing permission to list organizations")
-		}
+
+	allowed, err := s.isClusterAdmin(ctx, identityID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "authorization check: %v", err)
+	}
+	if !allowed {
+		return nil, status.Error(codes.PermissionDenied, "missing permission to list organizations")
 	}
 
 	cursor, err := decodePageCursor(req.GetPageToken())

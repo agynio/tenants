@@ -147,39 +147,32 @@ func TestListOrganizationsNonAdminDenied(t *testing.T) {
 	}
 }
 
-func TestListOrganizationsNoIdentityAllowed(t *testing.T) {
-	organizationID := uuid.New()
-	createdAt := time.Now().UTC()
-	updatedAt := createdAt.Add(2 * time.Minute)
-	called := false
+func TestListOrganizationsMissingIdentityUnauthenticated(t *testing.T) {
+	tests := map[string]context.Context{
+		"no metadata":    context.Background(),
+		"blank identity": metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-identity-id", "")),
+	}
 
-	server := &Server{
-		listOrganizations: func(ctx context.Context, pageSize int32, cursor *store.PageCursor) (store.OrganizationListResult, error) {
-			called = true
-			return store.OrganizationListResult{
-				Organizations: []store.Organization{
-					{
-						ID:        organizationID,
-						Name:      "Acme Corp",
-						CreatedAt: createdAt,
-						UpdatedAt: updatedAt,
-					},
+	for name, ctx := range tests {
+		t.Run(name, func(t *testing.T) {
+			server := &Server{
+				listOrganizations: func(ctx context.Context, pageSize int32, cursor *store.PageCursor) (store.OrganizationListResult, error) {
+					t.Fatal("listOrganizations should not be called without identity")
+					return store.OrganizationListResult{}, nil
 				},
-			}, nil
-		},
-	}
+			}
 
-	response, err := server.ListOrganizations(context.Background(), &organizationsv1.ListOrganizationsRequest{PageSize: 5})
-	if err != nil {
-		t.Fatalf("ListOrganizations returned error: %v", err)
-	}
-	if !called {
-		t.Fatal("expected listOrganizations to be called")
-	}
-	if len(response.Organizations) != 1 {
-		t.Fatalf("expected 1 organization, got %d", len(response.Organizations))
-	}
-	if response.Organizations[0].GetId() != organizationID.String() {
-		t.Fatalf("expected organization id %s, got %s", organizationID.String(), response.Organizations[0].GetId())
+			_, err := server.ListOrganizations(ctx, &organizationsv1.ListOrganizationsRequest{PageSize: 5})
+			if err == nil {
+				t.Fatal("expected error for missing identity")
+			}
+			statusErr, ok := status.FromError(err)
+			if !ok {
+				t.Fatalf("expected status error, got %v", err)
+			}
+			if statusErr.Code() != codes.Unauthenticated {
+				t.Fatalf("expected Unauthenticated, got %s", statusErr.Code())
+			}
+		})
 	}
 }
