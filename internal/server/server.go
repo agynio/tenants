@@ -63,6 +63,10 @@ func identityIDFromContext(ctx context.Context) (uuid.UUID, error) {
 	return uuid.Parse(values[0])
 }
 
+func outgoingIdentityContext(ctx context.Context, identityID uuid.UUID) context.Context {
+	return metadata.AppendToOutgoingContext(ctx, "x-identity-id", identityID.String())
+}
+
 func (s *Server) checkPermission(ctx context.Context, identityID uuid.UUID, relation string, organizationID uuid.UUID) (bool, error) {
 	response, err := s.authorizationClient.Check(ctx, &authorizationv1.CheckRequest{
 		TupleKey: &authorizationv1.TupleKey{
@@ -177,7 +181,7 @@ func (s *Server) CreateOrganization(ctx context.Context, req *organizationsv1.Cr
 		_ = s.store.DeleteOrganization(ctx, organization.ID)
 		return nil, toStatusError(err)
 	}
-	if err := s.seedDefaultNickname(ctx, organization.ID, identityID); err != nil {
+	if err := s.seedDefaultNickname(ctx, organization.ID, identityID, identityID); err != nil {
 		log.Printf("seed default nickname failed (org=%s identity=%s): %v", organization.ID, identityID, err)
 	}
 	return &organizationsv1.CreateOrganizationResponse{Organization: toProtoOrganization(organization)}, nil

@@ -82,7 +82,7 @@ func (s *Server) CreateMembership(ctx context.Context, req *organizationsv1.Crea
 			_ = s.store.DeleteMembership(ctx, membership.ID)
 			return nil, status.Errorf(codes.Internal, "failed to write membership tuple: %v", err)
 		}
-		if err := s.seedDefaultNickname(ctx, membership.OrganizationID, membership.IdentityID); err != nil {
+		if err := s.seedDefaultNickname(ctx, membership.OrganizationID, membership.IdentityID, callerID); err != nil {
 			log.Printf("seed default nickname failed (org=%s identity=%s): %v", membership.OrganizationID, membership.IdentityID, err)
 		}
 	}
@@ -121,7 +121,7 @@ func (s *Server) AcceptMembership(ctx context.Context, req *organizationsv1.Acce
 		_, _ = s.store.UpdateMembershipStatus(ctx, updated.ID, store.MembershipStatusPending)
 		return nil, status.Errorf(codes.Internal, "failed to write membership tuple: %v", err)
 	}
-	if err := s.seedDefaultNickname(ctx, updated.OrganizationID, updated.IdentityID); err != nil {
+	if err := s.seedDefaultNickname(ctx, updated.OrganizationID, updated.IdentityID, callerID); err != nil {
 		log.Printf("seed default nickname failed (org=%s identity=%s): %v", updated.OrganizationID, updated.IdentityID, err)
 	}
 
@@ -340,7 +340,8 @@ func (s *Server) SetMyOrgNickname(ctx context.Context, req *organizationsv1.SetM
 		return nil, status.Error(codes.PermissionDenied, "active membership required")
 	}
 
-	_, err = s.identityClient.SetNickname(ctx, &identityv1.SetNicknameRequest{
+	identityCtx := outgoingIdentityContext(ctx, callerID)
+	_, err = s.identityClient.SetNickname(identityCtx, &identityv1.SetNicknameRequest{
 		OrganizationId: organizationID.String(),
 		IdentityId:     callerID.String(),
 		Nickname:       nickname,
@@ -367,7 +368,7 @@ func (s *Server) ensureIdentityExists(ctx context.Context, identityID uuid.UUID)
 	return status.Errorf(codes.Internal, "identity lookup failed: %v", err)
 }
 
-func (s *Server) seedDefaultNickname(ctx context.Context, organizationID uuid.UUID, identityID uuid.UUID) error {
+func (s *Server) seedDefaultNickname(ctx context.Context, organizationID uuid.UUID, identityID uuid.UUID, callerID uuid.UUID) error {
 	identityType, err := s.identityClient.GetIdentityType(ctx, &identityv1.GetIdentityTypeRequest{IdentityId: identityID.String()})
 	if err != nil {
 		return fmt.Errorf("get identity type: %w", err)
@@ -383,7 +384,8 @@ func (s *Server) seedDefaultNickname(ctx context.Context, organizationID uuid.UU
 	if username == "" {
 		return nil
 	}
-	_, err = s.identityClient.SetNickname(ctx, &identityv1.SetNicknameRequest{
+	identityCtx := outgoingIdentityContext(ctx, callerID)
+	_, err = s.identityClient.SetNickname(identityCtx, &identityv1.SetNicknameRequest{
 		OrganizationId: organizationID.String(),
 		IdentityId:     identityID.String(),
 		Nickname:       username,
